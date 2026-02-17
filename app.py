@@ -1,41 +1,59 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Configuração da Página
 st.set_page_config(page_title="Truck Center - Entrada", page_icon="🚛")
 
-# Tenta ler a chave de segurança que vamos configurar depois
+# Configuração da Chave
 try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except:
-    st.error("Erro: Chave API não configurada.")
+    st.error("Erro: Verifique a chave API nos Secrets.")
 
-st.title("🚛 Check-in Rápido de Caminhões")
+st.title("🚛 Check-in Rápido Truck Center")
 
-# Captura de Foto e Áudio
-foto = st.camera_input("1. Foto do Caminhão (ou Placa)")
-audio = st.audio_input("2. Relato do Consultor (Modelo e Defeito)")
+# Função para converter arquivos do Streamlit para o formato da IA
+def preparar_arquivo(uploaded_file):
+    if uploaded_file is not None:
+        return {
+            "mime_type": uploaded_file.type,
+            "data": uploaded_file.getvalue()
+        }
+    return None
+
+# Interface
+foto = st.camera_input("1. Foto do Caminhão")
+audio = st.audio_input("2. Relato do Consultor")
 
 if st.button("🚀 Processar Entrada"):
     if foto and audio:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        with st.spinner("IA Analisando dados híbridos..."):
+        with st.spinner("IA analisando imagem e áudio..."):
+            # Transformando os arquivos para o formato correto
+            foto_blob = preparar_arquivo(foto)
+            audio_blob = preparar_arquivo(audio)
+            
+            # Prompt focado no sistema JJW XP (MARCA MODELO PLACA ANO/)
             prompt = """
-            Você é um consultor técnico de caminhões experiente.
             Analise a FOTO e o ÁUDIO. 
             No ÁUDIO, o consultor dirá o modelo e o defeito. 
-            Priorize o áudio para o Modelo e Placa se houver conflito com a imagem.
-            Retorne um resumo organizado com:
-            - VEÍCULO (Marca/Modelo)
-            - PLACA
-            - RELATO DO PROBLEMA
-            Seja direto e profissional.
-            """
-            response = model.generate_content([prompt, foto, audio])
             
-            st.success("Entrada Processada com Sucesso!")
-            st.markdown(f"### 📋 Dados da OS:\n {response.text}")
+            Retorne PRIMEIRO uma linha EXATAMENTE neste formato para o sistema JJW:
+            MARCA MODELO PLACA ANO/
+            
+            Abaixo dessa linha, escreva:
+            ---
+            RESUMO PARA OFICINA: (Descreva o defeito relatado no áudio)
+            """
+            
+            try:
+                # Enviando os blobs (dados puros) para a IA
+                response = model.generate_content([prompt, foto_blob, audio_blob])
+                
+                st.success("Entrada Processada!")
+                # st.code facilita o clique para copiar e colar no JJW
+                st.code(response.text) 
+                
+            except Exception as e:
+                st.error(f"Erro no processamento da IA: {e}")
     else:
-        st.warning("Por favor, capture a foto e o áudio primeiro.")
+        st.warning("Capture a foto e o áudio primeiro!")
