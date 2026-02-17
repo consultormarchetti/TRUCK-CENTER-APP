@@ -1,12 +1,16 @@
 import streamlit as st
 import google.generativeai as genai
 
-st.set_page_config(page_title="Truck Center - Entrada", page_icon="🚛")
-
 # Configuração da Chave
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+
+st.title("🚛 Ajuste de Sistema")
+
+# Comando para listar os modelos permitidos para sua conta
+st.write("Modelos disponíveis para sua chave:")
+for m in genai.list_models():
+    if 'generateContent' in m.supported_generation_methods:
+        st.code(m.name)
 except:
     st.error("Erro: Verifique a chave API nos Secrets.")
 
