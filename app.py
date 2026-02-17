@@ -22,7 +22,7 @@ def preparar_arquivo(uploaded_file):
     return None
 
 # Interface
-foto = st.camera_input("1. Foto do Caminhão", facing="back")
+foto = st.camera_input("1. Foto do Caminhão")
 audio = st.audio_input("2. Relato do Consultor")
 
 if st.button("🚀 Processar Entrada"):
