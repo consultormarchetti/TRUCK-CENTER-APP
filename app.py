@@ -6,7 +6,7 @@ st.set_page_config(page_title="Truck Center - Entrada", page_icon="🚛")
 # Configuração da Chave
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model = genai.GenerativeModel('gemini-1.5-pro')
 except:
     st.error("Erro: Verifique a chave API nos Secrets.")
 
