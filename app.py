@@ -11,7 +11,6 @@ st.write("Modelos disponíveis para sua chave:")
 for m in genai.list_models():
     if 'generateContent' in m.supported_generation_methods:
         st.code(m.name)
-except:
     st.error("Erro: Verifique a chave API nos Secrets.")
 
 st.title("🚛 Check-in Rápido Truck Center")
