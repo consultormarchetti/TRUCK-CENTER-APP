@@ -7,8 +7,8 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
-# Faz o painel do PC atualizar sozinho a cada 10 segundos
-st_autorefresh(interval=10000, key="datarefresh")
+# Faz o painel do PC atualizar sozinho a cada 30 segundos
+st_autorefresh(interval=30000, key="datarefresh")
 
 # --- CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
