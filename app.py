@@ -10,7 +10,7 @@ st.set_page_config(page_title="Truck Center - Pátio", page_icon="🚛", layout=
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     # O 'lite' é o melhor equilíbrio para evitar o erro 429 de limite
-    model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
+    model = genai.GenerativeModel('models/gemini-2.0-flash')
 except:
     st.error("Erro nos Secrets. Verifique a nova chave API.")
 
