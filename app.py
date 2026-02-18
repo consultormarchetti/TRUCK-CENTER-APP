@@ -14,7 +14,7 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1o-t_0CWSwMQvVblb-G-9-LBb
 # --- CONFIGURAÇÃO DA IA ---
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    model = genai.GenerativeModel('models/gemini-1.5-pro')
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 except:
     st.error("Erro na chave da IA nos Secrets.")
 
