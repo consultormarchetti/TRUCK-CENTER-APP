@@ -8,7 +8,7 @@ st.set_page_config(page_title="Truck Center - Entrada", page_icon="🚛")
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     # Usando o Flash 1.5 que tem a maior cota para o plano gratuito
-    model = genai.GenerativeModel('models/gemini-2.0-flash')
+    model = genai.GenerativeModel('models/gemini-flash-latest')
 except Exception as e:
     st.error("Erro na configuração da chave. Verifique os Secrets.")
 
