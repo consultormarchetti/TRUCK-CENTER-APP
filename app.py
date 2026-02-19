@@ -10,7 +10,7 @@ st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide
 
 def limpar_texto(texto):
     nfkd_form = unicodedata.normalize('NFKD', texto)
-    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C')
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C').upper()
 
 def upload_imagem(foto):
     try:
@@ -33,13 +33,12 @@ col1, col2 = st.columns([1, 1.3])
 
 with col1:
     st.subheader("Entrada de Dados")
-    # Captura de foto com foco em qualidade
-    foto = st.camera_input("Tirar Foto (Foque na Placa/Avaria)")
+    foto = st.camera_input("Tirar Foto do Veículo")
     audio = st.audio_input("Fale o Veículo, Placa e Serviços")
     
     if st.button("🚀 Finalizar Check-in Total"):
         if audio:
-            with st.spinner("Processando dados reais..."):
+            with st.spinner("Gravando dados em MAIÚSCULAS..."):
                 try:
                     link_foto = upload_imagem(foto) if foto else ""
                     
@@ -49,15 +48,13 @@ with col1:
                         response_format="text"
                     )
                     
-                    # PROMPT RECALIBRADO: Proibido inventar dados
-                    prompt = f"""Transcrissão: '{trans}'. 
-                    Instrução: Organize o texto acima de forma profissional. 
-                    - Não invente nomes, placas ou serviços que não foram ditos.
-                    - Use 'V.W.' para Volkswagen e 'M.Benz' para Mercedes.
-                    - Se a placa for dita, coloque-a no formato ABC-1234.
-                    - Formato: MARCA MODELO - PLACA (se houver).
-                    - Lista de serviços logo abaixo.
-                    Responda APENAS com as informações presentes na transcrição."""
+                    # Prompt focado em MAIÚSCULAS e Placa com Hífen
+                    prompt = f"""Transcrição: '{trans}'. 
+                    Instrução: Organize em LETRAS MAIÚSCULAS.
+                    - Formato: MARCA MODELO - PLACA (COM HÍFEN EX: ABC-1234).
+                    - Lista de serviços logo abaixo com '-'.
+                    - Proibido inventar serviços.
+                    Responda apenas o texto organizado."""
                     
                     compl = client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
@@ -65,10 +62,10 @@ with col1:
                     )
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    # Extração de placa real do áudio
-                    placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia.upper())
-                    placa_f = placa_match.group(0) if placa_match else "Verificar"
-                    if placa_f != "Verificar" and '-' not in placa_f: 
+                    # Extração da placa para o campo específico
+                    placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia)
+                    placa_f = placa_match.group(0) if placa_match else "VERIFICAR"
+                    if placa_f != "VERIFICAR" and '-' not in placa_f: 
                         placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
 
                     agora = datetime.now() - timedelta(hours=3)
@@ -80,14 +77,12 @@ with col1:
                     }
                     if link_foto: fields["LinkFoto"] = link_foto
 
-                    resp = requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
+                    requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
                                   headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
                                   json={"records": [{"fields": fields}]})
                     
-                    if resp.status_code == 200:
-                        st.success(f"✅ Gravado: {placa_f}")
-                    else:
-                        st.error("Erro ao gravar no banco.")
+                    st.success(f"✅ REGISTRADO: {placa_f}")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
@@ -99,9 +94,15 @@ with col2:
         if "records" in res:
             for r in res["records"]:
                 f = r["fields"]
-                with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
-                    st.write(f"**Relatório:**\n{f.get('Dados')}")
-                    if f.get("LinkFoto"):
-                        st.link_button("🖼️ Ver Foto em Alta", f.get("LinkFoto"))
+                placa_topo = f.get('Placa', 'S/P').upper()
+                with st.expander(f"🚛 {placa_topo} | {f.get('Data')} {f.get('Hora')}"):
+                    # Layout com miniatura
+                    c_txt, c_img = st.columns([2, 1])
+                    with c_txt:
+                        st.write(f"**RELATÓRIO:**\n{f.get('Dados')}")
+                    with c_img:
+                        if f.get("LinkFoto"):
+                            st.image(f.get("LinkFoto"), caption="MINIATURA (CLIQUE PARA AMPLIAR)", use_container_width=True)
+                            st.link_button("🔍 VER ORIGINAL", f.get("LinkFoto"))
     except:
-        st.write("Sincronizando...")
+        st.write("SINCRONIZANDO...")
