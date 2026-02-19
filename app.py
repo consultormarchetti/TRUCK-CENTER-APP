@@ -2,77 +2,72 @@ import streamlit as st
 from groq import Groq
 from datetime import datetime
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
-from streamlit_autorefresh import st_autorefresh
+import requests
 
-# Força o Streamlit a aceitar caracteres brasileiros
+# CONFIGURAÇÕES DE PÁGINA
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
-# Atualiza o PC sozinho a cada 10 segundos
-st_autorefresh(interval=30000, key="datarefresh")
+# CONFIGURAÇÕES DO AIRTABLE (Vindos dos Secrets)
+AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
+BASE_ID = st.secrets["BASE_ID"]
+TABLE_NAME = "Table 1"  # Confirme se no seu Airtable o nome da aba é este
 
-# --- CONEXÃO GOOGLE SHEETS ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- CONFIGURAÇÃO GROQ ---
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-st.title("🚛 Truck Center - Check-in Pro")
+st.title("🚛 Truck Center - Check-in")
 
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("Entrada") # Removi o emoji e acento do título para testar
-    foto = st.camera_input("Foto")
-    audio = st.audio_input("Fale os dados")
+    st.subheader("Entrada de Dados")
+    audio = st.audio_input("Fale a Placa e Modelo")
     
-    if st.button("Salvar Check-in"):
+    if st.button("Salvar no Sistema"):
         if audio:
-            with st.spinner("IA Processando..."):
-                try:
-                    # Transcrição (Whisper)
-                    transcription = client.audio.transcriptions.create(
-                        file=("audio.wav", audio.getvalue()),
-                        model="whisper-large-v3-turbo",
-                        response_format="text",
-                    )
-                    
-                    # Prompt sem caracteres especiais para evitar conflito na IA
-                    prompt = f'Traduza "{transcription}" para este formato: MARCA MODELO PLACA ANO/. Regras: VOLKSWAGEN vira V.W., Placa com hifen (Ex: ABC-1234). Responda apenas a linha.'
-                    
-                    completion = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                    
-                    resultado = completion.choices[0].message.content.strip()
-                    agora = datetime.now()
-                    
-                    # SALVAR NA PLANILHA (Usando nomes de colunas simples)
-                    df_novo = pd.DataFrame([{
-                        "Data": agora.strftime("%d/%m/%Y"),
-                        "Hora": agora.strftime("%H:%M"),
-                        "Dados": resultado,
-                        "Placa": resultado.split(' ')[2] if len(resultado.split(' ')) > 2 else ""
-                    }])
-                    
-                    # Tenta ler a planilha. Se a aba chamar "Página1", mude para "Sheet1" se der erro.
-                    # DICA: Renomeie a aba na sua planilha para "Dados" para facilitar
-                    dados_atuais = conn.read() 
-                    df_final = pd.concat([df_novo, dados_atuais], ignore_index=True)
-                    conn.update(data=df_final)
-                    
-                    st.success("✅ Salvo!")
-                    st.code(resultado)
-                except Exception as e:
-                    st.error(f"Erro de Texto/Codec: {e}")
+            with st.spinner("Processando..."):
+                # 1. Transcrição do Áudio
+                transcription = client.audio.transcriptions.create(
+                    file=("audio.wav", audio.getvalue()),
+                    model="whisper-large-v3-turbo",
+                    response_format="text",
+                )
+                
+                # 2. Inteligência para formatar
+                prompt = f'Formate "{transcription}" como: MARCA MODELO PLACA ANO. Ex: V.W. CONSTELLATION ABC-1234 2022. Responda APENAS a linha formatada.'
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                resultado = completion.choices[0].message.content.strip()
+                
+                # 3. Enviar para o Airtable
+                url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}"
+                headers = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
+                agora = datetime.now()
+                
+                payload = {
+                    "records": [{
+                        "fields": {
+                            "Data": agora.strftime("%d/%m/%Y"),
+                            "Hora": agora.strftime("%H:%M"),
+                            "Dados": resultado,
+                            "Placa": resultado.split(' ')[-2] if '-' in resultado else "Verificar"
+                        }
+                    }]
+                }
+                
+                response = requests.post(url, headers=headers, json=payload)
+                if response.status_code == 200:
+                    st.success("✅ Salvo com sucesso!")
+                else:
+                    st.error(f"Erro ao salvar: {response.text}")
 
 with col2:
-    st.subheader("Painel do PC")
-    try:
-        # Mostra o que está na planilha agora
-        df_historico = conn.read()
-        if not df_historico.empty:
-            st.table(df_historico.head(10))
-    except:
-        st.info("Sincronizando com a planilha...")
+    st.subheader("Painel da Recepção (PC)")
+    url_get = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}?sort[0][field]=Data&sort[0][direction]=desc"
+    headers = {"Authorization": f"Bearer {AIRTABLE_TOKEN}"}
+    res = requests.get(url_get, headers=headers).json()
+    
+    if "records" in res:
+        dados_lista = [r["fields"] for r in res["records"]]
+        st.table(pd.DataFrame(dados_lista))
