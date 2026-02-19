@@ -4,10 +4,26 @@ from datetime import datetime, timedelta
 import pandas as pd
 import requests
 import re
+import unicodedata
 
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
-# Configurações
+# --- FUNÇÕES DE LIMPEZA E UPLOAD ---
+def limpar_texto(texto):
+    nfkd_form = unicodedata.normalize('NFKD', texto)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C')
+
+def upload_imagem(foto):
+    try:
+        url = "https://api.imgbb.com/1/upload"
+        payload = {"key": st.secrets["IMGBB_API_KEY"]}
+        files = {"image": foto.getvalue()}
+        response = requests.post(url, payload, files=files)
+        return response.json()["data"]["url"] if response.status_code == 200 else None
+    except:
+        return None
+
+# --- CONFIGS ---
 AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
 BASE_ID = st.secrets["BASE_ID"]
 TABLE_NAME = "Table 1"
@@ -22,69 +38,40 @@ with col1:
     foto = st.camera_input("Foto do Veículo")
     audio = st.audio_input("Fale o Veículo e Serviços")
     
-    if st.button("Finalizar Check-in"):
+    if st.button("🚀 Finalizar Check-in Total"):
         if audio:
-            with st.spinner("Processando..."):
+            with st.spinner("Sincronizando Voz e Foto..."):
                 try:
-                    # 1. Transcrição
-                    trans = client.audio.transcriptions.create(
-                        file=("audio.wav", audio.getvalue()),
-                        model="whisper-large-v3-turbo",
-                        response_format="text",
-                    )
+                    # 1. Processa Foto e Voz
+                    link_foto = upload_imagem(foto) if foto else ""
+                    trans = client.audio.transcriptions.create(file=("audio.wav", audio.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # 2. IA - Prompt mais rígido para evitar caracteres especiais
-                    prompt = f"""Organize: '{trans}'. 
-                    Formato: MARCA MODELO - PLACA. 
-                    Serviços: Liste com '*' sem caracteres especiais. 
-                    Abrevie: Volkswagen -> V.W., Mercedes -> MB.
-                    Placa com hífen: ABC-1234.
-                    Responda apenas o texto limpo."""
+                    # 2. IA Formata (VW, MB e Placa)
+                    prompt = f"Organize: '{trans}'. Formato: MARCA MODELO - PLACA. Abaixo, lista de servicos com '-'. Use V.W. e M.Benz. Placa: ABC-1234. SO TEXTO."
+                    compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
+                    res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    compl = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                    res_ia = compl.choices[0].message.content.strip()
-
-                    # 3. Limpeza de Segurança (Remove aspas e caracteres que travam o Airtable)
-                    res_ia_safe = res_ia.replace('"', '').replace("'", "").replace("{", "").replace("}", "")
-                    
-                    # 4. Busca de Placa (Regex Mercosul/Antiga)
-                    placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia_safe.upper())
+                    # 3. Placa
+                    placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia.upper())
                     placa_f = placa_match.group(0) if placa_match else "Verificar"
-                    if placa_f != "Verificar" and '-' not in placa_f:
-                        placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
+                    if placa_f != "Verificar" and '-' not in placa_f: placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
 
-                    # 5. Fuso Horário
+                    # 4. Envio Airtable
                     agora = datetime.now() - timedelta(hours=3)
-
-                    # 6. Envio para o Airtable
-                    url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}"
-                    headers = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
+                    payload = {"records": [{"fields": {
+                        "Data": agora.strftime("%d/%m/%Y"),
+                        "Hora": agora.strftime("%H:%M"),
+                        "Dados": res_ia,
+                        "Placa": placa_f,
+                        "LinkFoto": link_foto  # Crie uma coluna 'LinkFoto' no Airtable (tipo URL ou Single Text)
+                    }}]}
                     
-                    payload = {
-                        "records": [{
-                            "fields": {
-                                "Data": agora.strftime("%d/%m/%Y"),
-                                "Hora": agora.strftime("%H:%M"),
-                                "Dados": str(res_ia_safe),
-                                "Placa": str(placa_f)
-                            }
-                        }]
-                    }
-                    
-                    resp = requests.post(url, headers=headers, json=payload)
-                    
-                    if resp.status_code == 200:
-                        st.success("✅ Check-in realizado!")
-                        if foto:
-                            st.info("💡 Para salvar a foto no Airtable, anexe-a diretamente na coluna 'Attachments' da planilha no PC.")
-                    else:
-                        st.error(f"Erro no banco: {resp.text}")
-                        
+                    requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
+                                  headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
+                                  json=payload)
+                    st.success("✅ Check-in enviado com sucesso!")
                 except Exception as e:
-                    st.error(f"Falha técnica: {e}")
+                    st.error(f"Erro no envio: {e}")
 
 with col2:
     st.subheader("Painel da Recepção (PC)")
@@ -93,11 +80,13 @@ with col2:
         res = requests.get(url_get, headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}"}).json()
         
         if "records" in res:
-            df = pd.DataFrame([r["fields"] for r in res["records"]])
-            if not df.empty:
-                # Garante que as colunas existam antes de mostrar
-                for c in ["Data", "Hora", "Dados", "Placa"]:
-                    if c not in df.columns: df[c] = ""
-                st.table(df[["Data", "Hora", "Placa", "Dados"]].head(10))
+            for r in res["records"]:
+                f = r["fields"]
+                with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
+                    st.write(f"**Serviços:**\n{f.get('Dados')}")
+                    if f.get("LinkFoto"):
+                        st.link_button("🖼️ Ver Foto do Caminhão", f.get("LinkFoto"))
+                    else:
+                        st.caption("Sem foto anexada")
     except:
-        st.write("Aguardando novos registros...")
+        st.info("Buscando novos registros...")
