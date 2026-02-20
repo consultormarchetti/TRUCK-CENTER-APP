@@ -40,9 +40,6 @@ with col1:
     # Tenta forçar a câmera traseira direta (ignora a galeria em muitos Androids/iOS)
     st.markdown("### 📸 Captura de Imagem")
     foto = st.camera_input("Tirar Foto", label_visibility="collapsed")
-              
-    if foto:
-        st.image(foto, caption="Foto capturada", width=200)
     
     # Sistema de áudio duplo para correções e complementos
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
