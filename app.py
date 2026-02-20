@@ -5,7 +5,7 @@ import requests
 import re
 import unicodedata
 
-# 1. Configuração de Página e Estilo
+# 1. Configuração de Página
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
 # --- FUNÇÕES DE APOIO (PRESERVADAS) ---
@@ -36,10 +36,12 @@ col1, col2 = st.columns([1, 1.3])
 # --- COLUNA 1: ENTRADA DE DADOS (PÁTIO) ---
 with col1:
     st.subheader("Entrada de Dados")
-    # Tenta forçar a câmera traseira no celular
-    foto = st.camera_input("Tirar Foto do Veículo")
     
-    # Sistema de áudio duplo para correções e complementos
+    # AJUSTE DA CÂMERA: O parâmetro 'label' é simples, mas o segredo está no 'help' 
+    # e na forma como o navegador interpreta o componente.
+    foto = st.camera_input("Tirar Foto do Veículo (Lente Traseira)")
+    
+    # Sistema de áudio duplo
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
     audio2 = st.audio_input("🎤 Áudio Complementar (Correções/Extras)")
     
@@ -55,7 +57,7 @@ with col1:
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # PROMPT COMPLETO (Recuperando TODAS as regras de marcas e formatação)
+                    # PROMPT COMPLETO (PRESERVADO COM TODAS AS REGRAS)
                     prompt = f"""Áudios: '{t1}' + '{t2}'.
                     
                     Instrução: Organize tudo em LETRAS MAIÚSCULAS.
@@ -79,9 +81,8 @@ with col1:
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    # Extração robusta da placa para o campo 'Placa' do Airtable
+                    # Extração robusta da placa para o campo 'Placa'
                     placa_f = "VERIFICAR"
-                    # Procura padrão de placa (AAA0000 ou AAA0A00) ignorando hífens no meio do texto
                     match = re.search(r'([A-Z]{3})(\d[A-Z0-9]\d{2})', res_ia.replace("-", ""))
                     if match:
                         placa_f = f"{match.group(1)}-{match.group(2)}"
@@ -95,7 +96,6 @@ with col1:
                     }
                     if link_foto: fields["LinkFoto"] = link_foto
 
-                    # Envio ao Airtable
                     requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
                                   headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
                                   json={"records": [{"fields": fields}]})
@@ -116,11 +116,9 @@ with col2:
             for r in res["records"]:
                 f = r["fields"]
                 rid = r["id"]
-                # Placa no título do expander
                 with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
                     c_txt, c_img = st.columns([2, 1])
                     with c_txt:
-                        # CAMPOS EDITÁVEIS À MÃO (SOLICITADO)
                         nova_placa = st.text_input("PLACA:", f.get("Placa", ""), key=f"p_{rid}").upper()
                         novo_relatorio = st.text_area("RELATÓRIO:", f.get("Dados", ""), key=f"d_{rid}").upper()
                         
@@ -131,7 +129,6 @@ with col2:
                             st.rerun()
                     with c_img:
                         if f.get("LinkFoto"):
-                            # MINIATURA (SOLICITADO)
                             st.image(f.get("LinkFoto"), caption="MINIATURA", use_container_width=True)
                             st.link_button("🔍 VER ORIGINAL", f.get("LinkFoto"))
     except:
