@@ -7,6 +7,7 @@ import unicodedata
 
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
+# --- FUNÇÕES DE APOIO ---
 def limpar_texto(texto):
     nfkd_form = unicodedata.normalize('NFKD', texto)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C').upper()
@@ -35,33 +36,39 @@ with col1:
     st.subheader("Entrada de Dados")
     foto = st.camera_input("Tirar Foto do Veículo")
     
-    # Sistema de áudio duplo
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
     audio2 = st.audio_input("🎤 Áudio Complementar (Correções/Extras)")
     
     if st.button("🚀 Finalizar Check-in Total"):
         if audio1:
-            with st.spinner("Processando e Cruzando Áudios..."):
+            with st.spinner("Sincronizando Voz e Foto..."):
                 try:
                     link_foto = upload_imagem(foto) if foto else ""
                     
-                    # Transcreve áudio 1
                     t1 = client.audio.transcriptions.create(file=("a1.wav", audio1.getvalue()), model="whisper-large-v3-turbo", response_format="text")
-                    
-                    # Transcreve áudio 2 (se houver)
                     t2 = ""
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # Prompt que prioriza o segundo áudio em caso de conflito
+                    # PROMPT ATUALIZADO COM AS NOVAS REGRAS TÉCNICAS
                     prompt = f"""Áudio 1: '{t1}'. 
                     Áudio 2 (Complemento/Correção): '{t2}'.
                     
                     Instrução: Organize tudo em LETRAS MAIÚSCULAS.
-                    - Se o Áudio 2 corrigir informações do Áudio 1, use a informação do Áudio 2.
+                    - REGRAS DE MARCAS: 
+                      * 'VOLKSWAGEN' ou 'VOLKS' -> 'V.W.'
+                      * 'MERCEDES' -> 'M.BENZ'
+                      * 'VECO' ou 'IVECO' -> 'IVECO'
+                      * 'FRONTI' -> 'NISSAN FRONTIER'
+                      * 'ESSE DEZ' -> 'S-10'
+                      * 'VECO DEILI' -> 'IVECO DAILY'
+                      * 'SPRINTER' -> 'M.BENZ SPRINTER'
+                    
+                    - REGRA DE KM: Formate números de quilometragem como 'KM 111.111'.
+                    - Prioridade: Áudio 2 corrige o Áudio 1.
                     - Formato: MARCA MODELO - PLACA (ABC-1234).
-                    - Lista de serviços detalhada abaixo.
-                    - Proibido inventar dados."""
+                    - Lista de serviços detalhada abaixo com '-'.
+                    Responda apenas o texto organizado em MAIÚSCULAS."""
                     
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
@@ -69,7 +76,8 @@ with col1:
                     # Extração da placa
                     placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia)
                     placa_f = placa_match.group(0) if placa_match else "VERIFICAR"
-                    if placa_f != "VERIFICAR" and '-' not in placa_f: placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
+                    if placa_f != "VERIFICAR" and '-' not in placa_f: 
+                        placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
 
                     agora = datetime.now() - timedelta(hours=3)
                     fields = {"Data": agora.strftime("%d/%m/%Y"), "Hora": agora.strftime("%H:%M"), "Dados": res_ia, "Placa": placa_f}
@@ -97,18 +105,15 @@ with col2:
                 with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
                     c_txt, c_img = st.columns([2, 1])
                     with c_txt:
-                        # CAMPOS EDITÁVEIS À MÃO
                         nova_placa = st.text_input("PLACA:", f.get("Placa", ""), key=f"p_{rid}").upper()
-                        novo_relatorio = st.text_area("RELATÓRIO DE SERVIÇOS:", f.get("Dados", ""), key=f"d_{rid}").upper()
+                        novo_relatorio = st.text_area("RELATÓRIO:", f.get("Dados", ""), key=f"d_{rid}").upper()
                         
-                        if st.button("💾 SALVAR ALTERAÇÃO MANUAL", key=f"b_{rid}"):
-                            update_fields = {"Placa": nova_placa, "Dados": novo_relatorio}
-                            patch_resp = requests.patch(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}/{rid}",
+                        if st.button("💾 SALVAR ALTERAÇÃO", key=f"b_{rid}"):
+                            requests.patch(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}/{rid}",
                                            headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"},
-                                           json={"fields": update_fields})
-                            if patch_resp.status_code == 200:
-                                st.success("ALTERADO!")
-                                st.rerun()
+                                           json={"fields": {"Placa": nova_placa, "Dados": novo_relatorio}})
+                            st.success("ALTERADO!")
+                            st.rerun()
                     with c_img:
                         if f.get("LinkFoto"):
                             st.image(f.get("LinkFoto"), use_container_width=True)
