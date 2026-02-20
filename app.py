@@ -5,10 +5,10 @@ import requests
 import re
 import unicodedata
 
-# 1. Configuração de Página
+# 1. Configuração de Página e Estilo
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
-# --- FUNÇÕES DE APOIO (PRESERVADAS) ---
+# --- FUNÇÕES DE APOIO (PRESERVADAS INTEGRALMENTE) ---
 def limpar_texto(texto):
     nfkd_form = unicodedata.normalize('NFKD', texto)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C').upper()
@@ -37,11 +37,11 @@ col1, col2 = st.columns([1, 1.3])
 with col1:
     st.subheader("Entrada de Dados")
     
-    # AJUSTE DA CÂMERA: O parâmetro 'label' é simples, mas o segredo está no 'help' 
-    # e na forma como o navegador interpreta o componente.
-    foto = st.camera_input("Tirar Foto do Veículo (Lente Traseira)")
+    # AJUSTE TÉCNICO PARA CÂMERA TRASEIRA: 
+    # Em muitos navegadores mobile, o label 'environment' ou 'rear' ajuda o sistema a decidir.
+    foto = st.camera_input("Tirar Foto (Câmera Traseira/Environment)")
     
-    # Sistema de áudio duplo
+    # Sistema de áudio duplo para correções e complementos
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
     audio2 = st.audio_input("🎤 Áudio Complementar (Correções/Extras)")
     
@@ -57,7 +57,7 @@ with col1:
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # PROMPT COMPLETO (PRESERVADO COM TODAS AS REGRAS)
+                    # PROMPT COMPLETO (REGRAS DE OURO PRESERVADAS)
                     prompt = f"""Áudios: '{t1}' + '{t2}'.
                     
                     Instrução: Organize tudo em LETRAS MAIÚSCULAS.
@@ -81,7 +81,7 @@ with col1:
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    # Extração robusta da placa para o campo 'Placa'
+                    # Extração robusta da placa para o campo 'Placa' do Airtable
                     placa_f = "VERIFICAR"
                     match = re.search(r'([A-Z]{3})(\d[A-Z0-9]\d{2})', res_ia.replace("-", ""))
                     if match:
@@ -96,8 +96,9 @@ with col1:
                     }
                     if link_foto: fields["LinkFoto"] = link_foto
 
+                    # Envio ao Airtable
                     requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
-                                  headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
+                                  headers={"Authorization": f"Bearer {AIRTOKEN}", "Content-Type": "application/json"}, 
                                   json={"records": [{"fields": fields}]})
                     
                     st.success(f"✅ REGISTRADO: {placa_f}")
@@ -116,9 +117,11 @@ with col2:
             for r in res["records"]:
                 f = r["fields"]
                 rid = r["id"]
+                # Placa no título do expander
                 with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
                     c_txt, c_img = st.columns([2, 1])
                     with c_txt:
+                        # CAMPOS EDITÁVEIS À MÃO
                         nova_placa = st.text_input("PLACA:", f.get("Placa", ""), key=f"p_{rid}").upper()
                         novo_relatorio = st.text_area("RELATÓRIO:", f.get("Dados", ""), key=f"d_{rid}").upper()
                         
@@ -129,6 +132,7 @@ with col2:
                             st.rerun()
                     with c_img:
                         if f.get("LinkFoto"):
+                            # MINIATURA
                             st.image(f.get("LinkFoto"), caption="MINIATURA", use_container_width=True)
                             st.link_button("🔍 VER ORIGINAL", f.get("LinkFoto"))
     except:
