@@ -40,10 +40,7 @@ with col1:
     # Tenta forçar a câmera traseira direta (ignora a galeria em muitos Androids/iOS)
     st.markdown("### 📸 Captura de Imagem")
     foto = st.camera_input("Tirar Foto", label_visibility="collapsed")
-    
-    if not foto:
-        st.info("👆 Clique no botão acima para abrir a câmera traseira.")
-    
+              
     if foto:
         st.image(foto, caption="Foto capturada", width=200)
     
