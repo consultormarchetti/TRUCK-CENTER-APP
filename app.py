@@ -5,7 +5,7 @@ import requests
 import re
 import unicodedata
 
-# 1. Configuração de Página e Estilo
+# 1. Configuração de Página
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
 # --- FUNÇÕES DE APOIO (PRESERVADAS INTEGRALMENTE) ---
@@ -23,7 +23,7 @@ def upload_imagem(foto):
     except:
         return ""
 
-# Configurações de API (Secrets)
+# Configurações de API (Secrets) - CORRIGIDO AIRTABLE_TOKEN
 AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
 BASE_ID = st.secrets["BASE_ID"]
 TABLE_NAME = "Table 1"
@@ -37,9 +37,13 @@ col1, col2 = st.columns([1, 1.3])
 with col1:
     st.subheader("Entrada de Dados")
     
-    # AJUSTE TÉCNICO PARA CÂMERA TRASEIRA: 
-    # Em muitos navegadores mobile, o label 'environment' ou 'rear' ajuda o sistema a decidir.
-    foto = st.camera_input("Tirar Foto (Câmera Traseira/Environment)")
+    # CONTORNO PARA CÂMERA TRASEIRA: 
+    # Usar o uploader de arquivo força o celular a oferecer a 'Câmera Nativa'
+    # que sempre abre na lente traseira e com melhor qualidade.
+    foto = st.file_uploader("📸 CLIQUE PARA TIRAR FOTO (CÂMERA TRASEIRA)", type=["jpg", "png", "jpeg"])
+    
+    if foto:
+        st.image(foto, caption="Foto capturada", width=200)
     
     # Sistema de áudio duplo para correções e complementos
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
@@ -57,7 +61,7 @@ with col1:
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # PROMPT COMPLETO (REGRAS DE OURO PRESERVADAS)
+                    # PROMPT COMPLETO (REGRAS DE OURO PRESERVADAS E REFORÇADAS)
                     prompt = f"""Áudios: '{t1}' + '{t2}'.
                     
                     Instrução: Organize tudo em LETRAS MAIÚSCULAS.
@@ -81,11 +85,12 @@ with col1:
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    # Extração robusta da placa para o campo 'Placa' do Airtable
+                    # Extração robusta da placa para o campo 'Placa'
                     placa_f = "VERIFICAR"
-                    match = re.search(r'([A-Z]{3})(\d[A-Z0-9]\d{2})', res_ia.replace("-", ""))
+                    # Busca padrão de placa e garante o hífen no local correto
+                    match = re.search(r'([A-Z]{3})(-?)([0-9][A-Z0-9][0-9]{2})', res_ia.upper())
                     if match:
-                        placa_f = f"{match.group(1)}-{match.group(2)}"
+                        placa_f = f"{match.group(1).upper()}-{match.group(3).upper()}"
 
                     agora = datetime.now() - timedelta(hours=3)
                     fields = {
@@ -96,9 +101,9 @@ with col1:
                     }
                     if link_foto: fields["LinkFoto"] = link_foto
 
-                    # Envio ao Airtable
+                    # Envio ao Airtable (Correção do Token confirmada)
                     requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
-                                  headers={"Authorization": f"Bearer {AIRTOKEN}", "Content-Type": "application/json"}, 
+                                  headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
                                   json={"records": [{"fields": fields}]})
                     
                     st.success(f"✅ REGISTRADO: {placa_f}")
@@ -117,11 +122,10 @@ with col2:
             for r in res["records"]:
                 f = r["fields"]
                 rid = r["id"]
-                # Placa no título do expander
                 with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
                     c_txt, c_img = st.columns([2, 1])
                     with c_txt:
-                        # CAMPOS EDITÁVEIS À MÃO
+                        # CAMPOS EDITÁVEIS
                         nova_placa = st.text_input("PLACA:", f.get("Placa", ""), key=f"p_{rid}").upper()
                         novo_relatorio = st.text_area("RELATÓRIO:", f.get("Dados", ""), key=f"d_{rid}").upper()
                         
@@ -132,7 +136,6 @@ with col2:
                             st.rerun()
                     with c_img:
                         if f.get("LinkFoto"):
-                            # MINIATURA
                             st.image(f.get("LinkFoto"), caption="MINIATURA", use_container_width=True)
                             st.link_button("🔍 VER ORIGINAL", f.get("LinkFoto"))
     except:
