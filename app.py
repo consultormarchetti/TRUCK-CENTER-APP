@@ -37,10 +37,12 @@ col1, col2 = st.columns([1, 1.3])
 with col1:
     st.subheader("Entrada de Dados")
     
-    # CONTORNO PARA CÂMERA TRASEIRA: 
-    # Usar o uploader de arquivo força o celular a oferecer a 'Câmera Nativa'
-    # que sempre abre na lente traseira e com melhor qualidade.
-    foto = st.file_uploader("📸 CLIQUE PARA TIRAR FOTO (CÂMERA TRASEIRA)", type=["jpg", "png", "jpeg"])
+    # Tenta forçar a câmera traseira direta (ignora a galeria em muitos Androids/iOS)
+    st.markdown("### 📸 Captura de Imagem")
+    foto = st.camera_input("Tirar Foto", label_visibility="collapsed")
+    
+    if not foto:
+        st.info("👆 Clique no botão acima para abrir a câmera traseira.")
     
     if foto:
         st.image(foto, caption="Foto capturada", width=200)
@@ -61,26 +63,25 @@ with col1:
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # PROMPT COMPLETO (REGRAS DE OURO PRESERVADAS E REFORÇADAS)
+                  # PROMPT BLINDADO: Focado em V.W. e M.benz
                     prompt = f"""Áudios: '{t1}' + '{t2}'.
                     
-                    Instrução: Organize tudo em LETRAS MAIÚSCULAS.
-                    - REGRAS DE MARCAS: 
-                      * 'VOLKSWAGEN' ou 'VOLKS' -> 'V.W.'
-                      * 'MERCEDES' -> 'M.BENZ'
-                      * 'VECO' ou 'IVECO' -> 'IVECO'
-                      * 'FRONTI' -> 'NISSAN FRONTIER'
+                    Instrução: Organize tudo em LETRAS MAIÚSCULAS, respeitando as exceções abaixo.
+                    - REGRAS DE MARCAS (NÃO ALTERAR): 
+                      * Substitua 'VOLKSWAGEN' por 'V.W.'
+                      * Substitua 'MERCEDES' por 'M.Benz'
+                      * 'VECO' ou 'IVECU' -> 'IVECO'
+                      * 'FRONTI' ou 'nissanfroti' -> 'NISSAN FRONTIER'
                       * 'ESSE DEZ' -> 'S-10'
                       * 'VECO DEILI' -> 'IVECO DAILY'
-                      * 'SPRINTER' -> 'M.BENZ SPRINTER'
+                      * 'SPRINTER' -> 'M.Benz SPRINTER'
                     
-                    - REGRA DE KM: Números de quilometragem devem ser 'KM 111.111' (com pontos).
-                    - REGRA DE PLACA: Identifique e formate como ABC-1234 (hífen após 3 letras).
+                    - REGRA DE KM: Formate como 'KM 111.111' (sempre com pontos).
+                    - REGRA DE PLACA: Identifique e formate como ABC-1234 (hífen após a 3ª letra).
                     - Prioridade: O Áudio 2 corrige ou complementa o Áudio 1.
-                    - Formato: MARCA MODELO PLACA (sem hífens extras entre eles).
+                    - Formato: MARCA MODELO PLACA (sem hífens entre modelo e placa).
                     - Lista de serviços detalhada abaixo com '-'.
-                    - Proibido inventar serviços ou dados não ditos.
-                    Responda APENAS o texto organizado em MAIÚSCULAS."""
+                    Responda APENAS o texto organizado conforme as regras."""
                     
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
