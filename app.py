@@ -46,7 +46,7 @@ with col1:
     
     # Sistema de áudio duplo para correções e complementos
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
-    audio2 = st.audio_input("🎤 Áudio Complementar (Correções/Extras)")
+    audio2 = st.audio_input("🎤 Áudio Complementar")
     
     if st.button("🚀 Finalizar Check-in Total"):
         if audio1:
