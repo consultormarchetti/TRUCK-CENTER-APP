@@ -5,9 +5,10 @@ import requests
 import re
 import unicodedata
 
+# 1. Configuração de Página e Estilo
 st.set_page_config(page_title="Truck Center Pro", page_icon="🚛", layout="wide")
 
-# --- FUNÇÕES DE APOIO ---
+# --- FUNÇÕES DE APOIO (PRESERVADAS) ---
 def limpar_texto(texto):
     nfkd_form = unicodedata.normalize('NFKD', texto)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('ç', 'c').replace('Ç', 'C').upper()
@@ -22,7 +23,7 @@ def upload_imagem(foto):
     except:
         return ""
 
-# Configurações de API
+# Configurações de API (Secrets)
 AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
 BASE_ID = st.secrets["BASE_ID"]
 TABLE_NAME = "Table 1"
@@ -32,10 +33,13 @@ st.title("🚛 Truck Center - Check-in Pro")
 
 col1, col2 = st.columns([1, 1.3])
 
+# --- COLUNA 1: ENTRADA DE DADOS (PÁTIO) ---
 with col1:
     st.subheader("Entrada de Dados")
+    # Tenta forçar a câmera traseira no celular
     foto = st.camera_input("Tirar Foto do Veículo")
     
+    # Sistema de áudio duplo para correções e complementos
     audio1 = st.audio_input("🎤 Áudio Principal (Veículo/Serviços)")
     audio2 = st.audio_input("🎤 Áudio Complementar (Correções/Extras)")
     
@@ -45,14 +49,14 @@ with col1:
                 try:
                     link_foto = upload_imagem(foto) if foto else ""
                     
+                    # Transcrições Groq/Whisper
                     t1 = client.audio.transcriptions.create(file=("a1.wav", audio1.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     t2 = ""
                     if audio2:
                         t2 = client.audio.transcriptions.create(file=("a2.wav", audio2.getvalue()), model="whisper-large-v3-turbo", response_format="text")
                     
-                    # PROMPT ATUALIZADO COM AS NOVAS REGRAS TÉCNICAS
-                    prompt = f"""Áudio 1: '{t1}'. 
-                    Áudio 2 (Complemento/Correção): '{t2}'.
+                    # PROMPT COMPLETO (Recuperando TODAS as regras de marcas e formatação)
+                    prompt = f"""Áudios: '{t1}' + '{t2}'.
                     
                     Instrução: Organize tudo em LETRAS MAIÚSCULAS.
                     - REGRAS DE MARCAS: 
@@ -64,47 +68,59 @@ with col1:
                       * 'VECO DEILI' -> 'IVECO DAILY'
                       * 'SPRINTER' -> 'M.BENZ SPRINTER'
                     
-                    - REGRA DE KM: Formate números de quilometragem como 'KM 111.111'.
-                    - Prioridade: Áudio 2 corrige o Áudio 1.
-                    - Formato: MARCA MODELO - PLACA (ABC-1234).
+                    - REGRA DE KM: Números de quilometragem devem ser 'KM 111.111' (com pontos).
+                    - REGRA DE PLACA: Identifique e formate como ABC-1234 (hífen após 3 letras).
+                    - Prioridade: O Áudio 2 corrige ou complementa o Áudio 1.
+                    - Formato: MARCA MODELO PLACA (sem hífens extras entre eles).
                     - Lista de serviços detalhada abaixo com '-'.
-                    Responda apenas o texto organizado em MAIÚSCULAS."""
+                    - Proibido inventar serviços ou dados não ditos.
+                    Responda APENAS o texto organizado em MAIÚSCULAS."""
                     
                     compl = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
                     res_ia = limpar_texto(compl.choices[0].message.content.strip())
                     
-                    # Extração da placa
-                    placa_match = re.search(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', res_ia)
-                    placa_f = placa_match.group(0) if placa_match else "VERIFICAR"
-                    if placa_f != "VERIFICAR" and '-' not in placa_f: 
-                        placa_f = f"{placa_f[:3]}-{placa_f[3:]}"
+                    # Extração robusta da placa para o campo 'Placa' do Airtable
+                    placa_f = "VERIFICAR"
+                    # Procura padrão de placa (AAA0000 ou AAA0A00) ignorando hífens no meio do texto
+                    match = re.search(r'([A-Z]{3})(\d[A-Z0-9]\d{2})', res_ia.replace("-", ""))
+                    if match:
+                        placa_f = f"{match.group(1)}-{match.group(2)}"
 
                     agora = datetime.now() - timedelta(hours=3)
-                    fields = {"Data": agora.strftime("%d/%m/%Y"), "Hora": agora.strftime("%H:%M"), "Dados": res_ia, "Placa": placa_f}
+                    fields = {
+                        "Data": agora.strftime("%d/%m/%Y"), 
+                        "Hora": agora.strftime("%H:%M"), 
+                        "Dados": res_ia, 
+                        "Placa": placa_f
+                    }
                     if link_foto: fields["LinkFoto"] = link_foto
 
+                    # Envio ao Airtable
                     requests.post(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}", 
                                   headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}, 
                                   json={"records": [{"fields": fields}]})
                     
-                    st.success(f"✅ REGISTRADO COM SUCESSO!")
+                    st.success(f"✅ REGISTRADO: {placa_f}")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro no processamento: {e}")
 
+# --- COLUNA 2: PAINEL DA RECEPÇÃO (PC) ---
 with col2:
     st.subheader("Painel da Recepção (PC)")
     try:
-        res = requests.get(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}?sort[0][field]=Data&sort[0][direction]=desc&sort[1][field]=Hora&sort[1][direction]=desc", 
-                           headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}"}).json()
+        url_get = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}?sort[0][field]=Data&sort[0][direction]=desc&sort[1][field]=Hora&sort[1][direction]=desc"
+        res = requests.get(url_get, headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}"}).json()
         
         if "records" in res:
             for r in res["records"]:
                 f = r["fields"]
                 rid = r["id"]
+                # Placa no título do expander
                 with st.expander(f"🚛 {f.get('Placa', 'S/P')} | {f.get('Data')} {f.get('Hora')}"):
                     c_txt, c_img = st.columns([2, 1])
                     with c_txt:
+                        # CAMPOS EDITÁVEIS À MÃO (SOLICITADO)
                         nova_placa = st.text_input("PLACA:", f.get("Placa", ""), key=f"p_{rid}").upper()
                         novo_relatorio = st.text_area("RELATÓRIO:", f.get("Dados", ""), key=f"d_{rid}").upper()
                         
@@ -112,11 +128,11 @@ with col2:
                             requests.patch(f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}/{rid}",
                                            headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"},
                                            json={"fields": {"Placa": nova_placa, "Dados": novo_relatorio}})
-                            st.success("ALTERADO!")
                             st.rerun()
                     with c_img:
                         if f.get("LinkFoto"):
-                            st.image(f.get("LinkFoto"), use_container_width=True)
+                            # MINIATURA (SOLICITADO)
+                            st.image(f.get("LinkFoto"), caption="MINIATURA", use_container_width=True)
                             st.link_button("🔍 VER ORIGINAL", f.get("LinkFoto"))
     except:
-        st.write("SINCRONIZANDO...")
+        st.write("SINCRONIZANDO DADOS...")
